@@ -57,9 +57,9 @@ export default function Dashboard() {
   const [stats, setStats] = useState({ totalWords: 0, totalSummaries: 0 });
   const [carouselIndex, setCarouselIndex] = useState(0);
   const SLIDES = [
-    { title: "Transkrip Cepat", text: "Konversi ucapan menjadi teks secara otomatis.", img: "" },
-    { title: "Ringkasan Pintar", text: "Ringkasan singkat dari hasil transkrip.", img: "" },
-    { title: "Simpan & Kelola", text: "Akses riwayat rekaman dan ringkasan Anda kapan saja.", img: "" },
+    { title: "Transkrip Cepat", text: "Konversi ucapan menjadi teks secara otomatis.", img: "/transcript-slide.png" },
+    { title: "Ringkasan Pintar", text: "Ringkasan singkat dari hasil transkrip.", img: "/summary-slide.png" },
+    { title: "Simpan & Kelola", text: "Akses riwayat rekaman dan ringkasan Anda kapan saja.", img: "/save-slide.png" },
   ];
 
   useEffect(() => {
@@ -306,12 +306,26 @@ export default function Dashboard() {
               <button className={s.carouselBtn} onClick={() => setCarouselIndex((i) => (i - 1 + SLIDES.length) % SLIDES.length)} aria-label="Prev">◀</button>
               <div className={s.carouselTrack}>
                 {SLIDES.map((slide, idx) => (
-                  <div key={idx} className={`${s.carouselSlide} ${idx === carouselIndex ? s.active : ''}`}>
-                    <div className={s.slideImage}><div className={s.slideIcon}>{idx === 0 ? '🎙️' : idx === 1 ? '🧾' : '📂'}</div></div>
-                    <div className={s.slideBody}>
-                      <h3>{slide.title}</h3>
-                      <p>{slide.text}</p>
+                  <div key={idx} className={`${s.carouselSlide} ${idx === carouselIndex ? s.active : ''} ${slide.img ? s.fullImage : ''}`}>
+                    <div className={`${s.slideImage} ${slide.img ? s.fullSize : ''}`}>
+                      {slide.img ? (
+                        <Image
+                          src={slide.img}
+                          alt={slide.title}
+                          width={1000}
+                          height={380}
+                          style={{ borderRadius: '14px', objectFit: 'cover', width: '100%', height: '100%' }}
+                        />
+                      ) : (
+                        <div className={s.slideIcon}>{idx === 0 ? '🎙️' : idx === 1 ? '🧾' : '📂'}</div>
+                      )}
                     </div>
+                    {!slide.img && (
+                      <div className={s.slideBody}>
+                        <h3>{slide.title}</h3>
+                        <p>{slide.text}</p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

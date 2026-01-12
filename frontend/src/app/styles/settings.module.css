@@ -116,12 +116,12 @@
   border-top: 1px solid #e5e7eb;
 }
 .btnSave {
-  background: linear-gradient(135deg, #0078d7 0%, #006fc8 100%);
+  background: #0078d7;
   border: 1px solid rgba(0,120,215,.3); color: #fff;
   padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer;
   transition: all .2s; box-shadow: 0 4px 12px rgba(0,120,215,.2);
 }
-.btnSave:hover { background: linear-gradient(135deg, #0070c8 0%, #0066b8 100%); box-shadow: 0 6px 16px rgba(0,120,215,.3); }
+.btnSave:hover { background: #0070c8; box-shadow: 0 6px 16px rgba(0,120,215,.3); }
 .btnReset {
   background: #ffffff; border: 1px solid #e5e7eb; color: #374151;
   padding: 12px 24px; border-radius: 12px; font-weight: 500; cursor: pointer; transition: all .2s; margin-right: 12px;
