@@ -64,6 +64,8 @@ export default function SettingsPage() {
   const [meta, setMeta] = useState<UserMeta>({});
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [editingName, setEditingName] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // form state
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
@@ -181,7 +183,9 @@ export default function SettingsPage() {
         return;
       }
       setEmail(session.user.email || "");
-      setMeta((session.user.user_metadata as UserMeta) || {});
+      const userMeta = (session.user.user_metadata as UserMeta) || {};
+      setMeta(userMeta);
+      setEditingName(userMeta.username || "");
       setLoading(false);
     })();
 
@@ -211,6 +215,52 @@ export default function SettingsPage() {
   const onLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/login");
+  };
+
+  const handleSaveName = async () => {
+    if (!editingName.trim()) {
+      showToast("Nama tidak boleh kosong", "error");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // Update user metadata di Supabase Auth
+        const { error: authError } = await supabase.auth.updateUser({
+          data: { ...session.user.user_metadata, username: editingName.trim() },
+        });
+
+        if (authError) {
+          showToast("Gagal menyimpan nama: " + authError.message, "error");
+          setIsSaving(false);
+          return;
+        }
+
+        // Update table profiles di Supabase
+        const { error: dbError } = await supabase
+          .from("profiles")
+          .update({ full_name: editingName.trim() })
+          .eq("id", session.user.id);
+
+        if (dbError) {
+          showToast("Gagal update di profiles: " + dbError.message, "error");
+          setIsSaving(false);
+          return;
+        }
+
+        // Update local state
+        setMeta((prev) => ({ ...prev, username: editingName.trim() }));
+        showToast("Nama berhasil diperbarui!", "success");
+        setShowProfileModal(false);
+      }
+    } catch (e) {
+      console.error("Error saving name:", e);
+      showToast("Terjadi kesalahan saat menyimpan nama", "error");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDeleteAccount = async () => {
@@ -490,11 +540,23 @@ export default function SettingsPage() {
             </div>
             <div className={s.modalBody}>
               <div className={s.profileSection}>
-                <div className={s.profileInitial}>{username.charAt(0).toUpperCase()}</div>
+                <div className={s.profileInitial}>{editingName.charAt(0).toUpperCase()}</div>
                 <div className={s.profileInfo}>
                   <div className={s.profileItem}>
                     <label>Nama</label>
-                    <p>{username}</p>
+                    <input
+                      type="text"
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        border: "1px solid #ddd",
+                        borderRadius: "4px",
+                        fontSize: "14px",
+                        fontFamily: "inherit",
+                      }}
+                    />
                   </div>
                   <div className={s.profileItem}>
                     <label>Email</label>
@@ -506,6 +568,38 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
+            </div>
+            <div className={s.modalFooter} style={{ padding: "16px", borderTop: "1px solid #eee", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowProfileModal(false)}
+                style={{
+                  padding: "8px 16px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  backgroundColor: "#f5f5f5",
+                  fontSize: "14px",
+                }}
+                disabled={isSaving}
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleSaveName}
+                disabled={isSaving}
+                style={{
+                  padding: "8px 16px",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: isSaving ? "not-allowed" : "pointer",
+                  backgroundColor: isSaving ? "#ccc" : "#007bff",
+                  color: "white",
+                  fontSize: "14px",
+                  fontWeight: "bold",
+                }}
+              >
+                {isSaving ? "Menyimpan..." : "Simpan"}
+              </button>
             </div>
           </div>
         </div>

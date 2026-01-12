@@ -27,6 +27,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState<string>("");
   const [meta, setMeta] = useState<UserMeta>({});
+  const [editingName, setEditingName] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // ui state
   const [listening, setListening] = useState(false);
@@ -73,6 +75,7 @@ export default function Dashboard() {
       setEmail(session.user.email || "");
       const userMeta = (session.user.user_metadata as UserMeta) || {};
       setMeta(userMeta);
+      setEditingName(userMeta.username || "");
       // Load mic sessions from user metadata
       setMicSessions(userMeta.mic_sessions || 0);
 
@@ -130,6 +133,51 @@ export default function Dashboard() {
   const onLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/login");
+  };
+
+  const handleSaveName = async () => {
+    if (!editingName.trim()) {
+      alert("Nama tidak boleh kosong");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // Update user metadata di Supabase Auth
+        const { error: authError } = await supabase.auth.updateUser({
+          data: { ...session.user.user_metadata, username: editingName.trim() },
+        });
+
+        if (authError) {
+          alert("Gagal menyimpan nama: " + authError.message);
+          setIsSaving(false);
+          return;
+        }
+
+        // Update table profiles di Supabase
+        const { error: dbError } = await supabase
+          .from("profiles")
+          .update({ full_name: editingName.trim() })
+          .eq("id", session.user.id);
+
+        if (dbError) {
+          alert("Gagal update di profiles: " + dbError.message);
+          setIsSaving(false);
+          return;
+        }
+
+        // Update local state
+        setMeta((prev) => ({ ...prev, username: editingName.trim() }));
+        setShowProfileModal(false);
+      }
+    } catch (e) {
+      console.error("Error saving name:", e);
+      alert("Terjadi kesalahan saat menyimpan nama");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const toggleProfileDropdown = () => {
@@ -293,11 +341,23 @@ export default function Dashboard() {
               </div>
               <div className={s.modalBody}>
                 <div className={s.profileSection}>
-                  <div className={s.profileInitial}>{username.charAt(0).toUpperCase()}</div>
+                  <div className={s.profileInitial}>{editingName.charAt(0).toUpperCase()}</div>
                   <div className={s.profileInfo}>
                     <div className={s.profileItem}>
                       <label>Nama</label>
-                      <p>{username}</p>
+                      <input
+                        type="text"
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          border: "1px solid #ddd",
+                          borderRadius: "4px",
+                          fontSize: "14px",
+                          fontFamily: "inherit",
+                        }}
+                      />
                     </div>
                     <div className={s.profileItem}>
                       <label>Email</label>
@@ -309,6 +369,38 @@ export default function Dashboard() {
                     </div>
                   </div>
                 </div>
+              </div>
+              <div className={s.modalFooter} style={{ padding: "16px", borderTop: "1px solid #eee", display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => setShowProfileModal(false)}
+                  style={{
+                    padding: "8px 16px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    backgroundColor: "#f5f5f5",
+                    fontSize: "14px",
+                  }}
+                  disabled={isSaving}
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleSaveName}
+                  disabled={isSaving}
+                  style={{
+                    padding: "8px 16px",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: isSaving ? "not-allowed" : "pointer",
+                    backgroundColor: isSaving ? "#ccc" : "#007bff",
+                    color: "white",
+                    fontSize: "14px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {isSaving ? "Menyimpan..." : "Simpan"}
+                </button>
               </div>
             </div>
           </div>
