@@ -1,0 +1,515 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/app/lib/supabaseClient";
+import s from "@/app/styles/dashboard.module.css"; // layout (sidebar/topbar)
+import h from "@/app/styles/settings.module.css";   // style khusus settings
+
+type UserMeta = {
+  username?: string;
+  avatar_url?: string;
+  [k: string]: any;
+};
+
+type Settings = {
+  voiceLanguage: string;
+  microphoneSensitivity: number;
+  autoVoiceDetection: boolean;
+  noiseFilter: boolean;
+
+  aiModel: string;
+  aiCreativity: number;
+  autoSummarize: boolean;
+  summarizeDelay: number;
+
+  appTheme: "dark" | "light" | "auto";
+  soundNotifications: boolean;
+  saveHistory: boolean;
+  historyRetention: number;
+
+  groqApiKey: string;
+};
+
+const DEFAULTS: Settings = {
+  voiceLanguage: "id-ID",
+  microphoneSensitivity: 50,
+  autoVoiceDetection: true,
+  noiseFilter: true,
+
+  aiModel: "llama-3.3-70b-versatile",
+  aiCreativity: 30,
+  autoSummarize: true,
+  summarizeDelay: 2,
+
+  appTheme: "dark",
+  soundNotifications: true,
+  saveHistory: true,
+  historyRetention: 30,
+
+  groqApiKey: "",
+};
+
+// Base URL for the Flask backend API
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:5001";
+
+export default function SettingsPage() {
+  const router = useRouter();
+  const supabase = supabaseBrowser();
+
+  // auth/session
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState<string>("");
+  const [meta, setMeta] = useState<UserMeta>({});
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // form state
+  const [settings, setSettings] = useState<Settings>(DEFAULTS);
+  const [query, setQuery] = useState("");
+
+  // status
+  const [aiStatus, setAiStatus] = useState<"active" | "inactive">("active");
+  const [micStatus, setMicStatus] = useState<"active" | "inactive">("inactive");
+  const [storageText, setStorageText] = useState<string>("—");
+
+  // toast
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // --- NEW: State for summary mode ---
+  const [mode, setMode] = useState<string>("");
+  const [modeStatus, setModeStatus] = useState<string>("");
+
+  // --- NEW: Fetch current mode from Flask backend ---
+  useEffect(() => {
+    const fetchMode = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/get_summary_mode`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.mode) {
+            setMode(data.mode);
+            setModeStatus("Mode saat ini: " + data.mode);
+          } else {
+            setModeStatus("Mode saat ini: (tidak diketahui)");
+          }
+        } else {
+          setModeStatus("Gagal ambil mode dari server (HTTP " + res.status + ")");
+        }
+      } catch (err: any) {
+        setModeStatus("Gagal sambung ke server: " + (err?.message || err));
+      }
+    };
+
+    fetchMode();
+  }, []);
+
+  // load from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("voiceToTextSettings");
+      if (raw) {
+        const merged = { ...DEFAULTS, ...JSON.parse(raw) };
+        setSettings(merged);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // system checks
+  const checkMic = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicStatus("active");
+    } catch {
+      setMicStatus("inactive");
+    }
+  };
+  const checkAI = async () => {
+    try {
+      // Kalau kamu punya API health, ganti ke endpoint kamu:
+      // const res = await fetch("/api/health");
+      // setAiStatus(res.ok ? "active" : "inactive");
+      // Untuk sekarang, kita coba ping root (akan gagal di dev → jadi "inactive")
+      const res = await fetch("/", { method: "HEAD" });
+      setAiStatus(res.ok ? "active" : "inactive");
+    } catch {
+      setAiStatus("inactive");
+    }
+  };
+  const checkStorage = async () => {
+    // Estimasi storage (tidak semua browser support)
+    const anyNav = navigator as any;
+    if (anyNav?.storage?.estimate) {
+      const est = await anyNav.storage.estimate();
+      const used = ((est.usage || 0) / 1024 / 1024).toFixed(1);
+      const quota = ((est.quota || 0) / 1024 / 1024).toFixed(1);
+      setStorageText(`${used}MB / ${quota}MB`);
+    } else {
+      setStorageText("Tidak tersedia");
+    }
+  };
+
+  useEffect(() => {
+    checkMic();
+    checkAI();
+    checkStorage();
+    const id = setInterval(() => {
+      checkAI();
+      checkStorage();
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  // auth session management
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!mounted) return;
+
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+      setEmail(session.user.email || "");
+      setMeta((session.user.user_metadata as UserMeta) || {});
+      setLoading(false);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, sess) => {
+      if (!sess) router.replace("/login");
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [router, supabase]);
+
+  // handlers
+  const save = () => {
+    localStorage.setItem("voiceToTextSettings", JSON.stringify(settings));
+    showToast("Pengaturan berhasil disimpan!", "success");
+  };
+  const reset = () => {
+    if (confirm("Reset semua pengaturan ke default?")) {
+      localStorage.removeItem("voiceToTextSettings");
+      setSettings(DEFAULTS);
+      showToast("Pengaturan telah direset ke default.", "success");
+    }
+  };
+
+  const onLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!confirm("Apakah Anda yakin ingin menghapus akun? Tindakan ini tidak dapat dibatalkan.")) return;
+    if (!confirm("Ketik 'HAPUS' untuk konfirmasi (hanya untuk keamanan): HAPUS")) return;
+
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User tidak ditemukan");
+
+      // Delete user account
+      const { error } = await supabase.auth.admin.deleteUser(user.id);
+      
+      if (error) throw error;
+
+      showToast("Akun berhasil dihapus", "success");
+      router.replace("/login");
+    } catch (err: any) {
+      showToast("Gagal menghapus akun: " + (err?.message || err), "error");
+    }
+  };
+
+  const toggleProfileDropdown = () => {
+    setShowProfileDropdown(!showProfileDropdown);
+  };
+
+  const closeProfileDropdown = () => {
+    setShowProfileDropdown(false);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showProfileDropdown) {
+        const target = event.target as Element;
+        if (!target.closest(`.${s.avatar}`)) {
+          setShowProfileDropdown(false);
+        }
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showProfileDropdown]);
+
+  // --- NEW: Handler to submit summary mode ---
+  const handleModeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModeStatus("Menyimpan...");
+
+    try {
+      const res = await fetch(`${API_BASE}/set_summary_mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+
+      const data = await res.json().catch(() => ({ error: "invalid_response" }));
+
+      if (!res.ok) {
+        setModeStatus("Error: " + (data?.error || "HTTP " + res.status));
+        return;
+      }
+
+      if (data?.mode) {
+        setModeStatus("Mode tersimpan: " + data.mode);
+        showToast("Mode ringkasan berhasil disimpan!", "success");
+      } else if (data?.error) {
+        setModeStatus("Error: " + data.error);
+        showToast("Gagal menyimpan mode: " + data.error, "error");
+      } else {
+        setModeStatus("Tersimpan (respons server tidak terduga)");
+      }
+    } catch (err: any) {
+      setModeStatus("Gagal menyimpan: " + (err?.message || err));
+      showToast("Gagal menyimpan mode: " + (err?.message || err), "error");
+    }
+  };
+
+
+  // derived values
+  const username = meta.username || email.split("@")[0] || "User";
+  const avatar = meta.avatar_url || "https://i.pravatar.cc/64?img=12";
+  const role = meta.summary_mode === "dokter_hewan" ? "Veterinarian" : meta.summary_mode === "patologi" ? "Pathologist" : "User";
+
+  const onRange = (k: keyof Settings) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setSettings((prev) => ({ ...prev, [k]: Number(e.target.value) }));
+
+  const onCheck = (k: keyof Settings) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setSettings((prev) => ({ ...prev, [k]: e.target.checked }));
+
+  const onText = (k: keyof Settings) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setSettings((prev) => ({ ...prev, [k]: e.target.value }));
+
+  // search filter sections
+  const matchesQuery = (text: string) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return text.toLowerCase().includes(q);
+  };
+
+  if (loading) {
+    return (
+      <div className={s.app}>
+        <main className={s.content}>
+          <div className={s.card}>Loading settings...</div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className={s.app}>
+      {/* SIDEBAR */}
+      <aside className={s.sidebar}>
+        <div className={s.sbInner}>
+          <div className={s.brand}>
+            <Image src="/logo_neurabot.jpg" alt="Logo Neurabot" width={36} height={36} className={s.brandImg} />
+            <div className={s.brandName}>Neurabot</div>
+          </div>
+
+          <nav className={s.nav} aria-label="Sidebar">
+            <a className={s.navItem} href="/dashboard">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9,22 9,12 15,12 15,22"></polyline>
+              </svg>
+              <span>Dashboard</span>
+            </a>
+            <a className={s.navItem} href="/history">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12,6 12,12 16,14"></polyline>
+              </svg>
+              <span>History</span>
+            </a>
+            <a className={`${s.navItem} ${s.active}`} href="/settings">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+              </svg>
+              <span>Settings</span>
+            </a>
+          </nav>
+
+          <div className={s.sbFooter}>
+            <div style={{ opacity: 0.6 }}>© 2025 Neurabot</div>
+          </div>
+        </div>
+      </aside>
+
+      {/* TOPBAR */}
+      <header className={s.topbar}>
+        <div className={s.tbWrap}>
+          <div className={s.leftGroup}>
+            <div className={s.search} role="search">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+              </svg>
+              <input
+                type="search"
+                placeholder="Search settings..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                aria-label="Search settings"
+              />
+            </div>
+          </div>
+
+          <div className={s.rightGroup}>
+            <div className={s.avatar} onClick={toggleProfileDropdown}>
+              <div className={s.avatarInitial}>{username.charAt(0).toUpperCase()}</div>
+              <div className={s.meta}>
+                <div className={s.name}>{username}</div>
+              </div>
+              
+              {showProfileDropdown && (
+                <div className={s.profileDropdown}>
+                  <button className={s.dropdownItem} onClick={() => { setShowProfileModal(true); setShowProfileDropdown(false); }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                    Profile
+                  </button>
+                  <button className={s.dropdownItem} onClick={onLogout}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                      <polyline points="16,17 21,12 16,7"></polyline>
+                      <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* CONTENT */}
+      <main className={s.content}>
+        <div className={h.settingsContainer}>
+          <div className={h.settingsHeader}>
+            <h2 className={h.pageTitle}>Settings</h2>
+          </div>
+
+          {/* System Status */}
+          <section className={h.section}>
+            <h3>System Status</h3>
+
+            <div className={h.item}>
+              <div className={h.info}>
+                <div className={h.label}>Koneksi AI</div>
+                <div className={h.desc}>Status koneksi ke layanan AI</div>
+              </div>
+              <div className={h.control}>
+                <span className={`${h.status} ${aiStatus === "active" ? h.statusActive : h.statusInactive}`}>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
+                  {aiStatus === "active" ? "Terhubung" : "Terputus"}
+                </span>
+              </div>
+            </div>
+
+            <div className={h.item}>
+              <div className={h.info}>
+                <div className={h.label}>Mikrofon</div>
+                <div className={h.desc}>Status akses mikrofon</div>
+              </div>
+              <div className={h.control}>
+                <span className={`${h.status} ${micStatus === "active" ? h.statusActive : h.statusInactive}`}>
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
+                  {micStatus === "active" ? "Tersedia" : "Tidak Tersedia"}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* Account Settings */}
+          <section className={h.section}>
+            <h3>Akun</h3>
+
+            <div className={h.item}>
+              <div className={h.info}>
+                <div className={h.label}>Hapus Akun</div>
+                <div className={h.desc}>Hapus akun Anda secara permanen. Tindakan ini tidak dapat dibatalkan.</div>
+              </div>
+              <div className={h.control}>
+                <button className={h.btnDelete} onClick={handleDeleteAccount}>Hapus Akun</button>
+              </div>
+            </div>
+          </section>
+
+          {/* Save Button */}
+          <div className={h.actionsBar}>
+            <button className={h.btnSave} onClick={save}>Simpan Pengaturan</button>
+          </div>
+        </div>
+      </main>
+
+      {/* Toast */}
+      {toast && (
+        <div className={`${h.toast} ${toast.type === "success" ? h.success : h.error}`}>
+          {toast.msg}
+        </div>
+      )}
+
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <div className={s.modalBackdrop} onClick={() => setShowProfileModal(false)}>
+          <div className={s.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div className={s.modalHeader}>
+              <h2>Profile</h2>
+              <button className={s.modalClose} onClick={() => setShowProfileModal(false)}>✕</button>
+            </div>
+            <div className={s.modalBody}>
+              <div className={s.profileSection}>
+                <div className={s.profileInitial}>{username.charAt(0).toUpperCase()}</div>
+                <div className={s.profileInfo}>
+                  <div className={s.profileItem}>
+                    <label>Nama</label>
+                    <p>{username}</p>
+                  </div>
+                  <div className={s.profileItem}>
+                    <label>Email</label>
+                    <p>{email}</p>
+                  </div>
+                  <div className={s.profileItem}>
+                    <label>Role</label>
+                    <p>{role}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
