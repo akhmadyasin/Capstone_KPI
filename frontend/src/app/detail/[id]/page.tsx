@@ -400,9 +400,10 @@ export default function DetailPage() {
 
           <div className={s.rightGroup}>
             <div className={s.avatar} onClick={toggleProfileDropdown}>
-              <Image src={avatar} alt="Foto profil" width={36} height={36} unoptimized />
+              <div className={s.avatarInitial}>{username.charAt(0).toUpperCase()}</div>
               <div className={s.meta}>
                 <div className={s.name}>{username}</div>
+                <div className={s.role}></div>
               </div>
               
               {showProfileDropdown && (

@@ -232,6 +232,94 @@ def get_summary_mode():
     return jsonify({"mode": current_summary_mode})
 
 
+@app.route("/api/onboarding/profile", methods=["POST", "OPTIONS"])
+def save_onboarding_profile():
+    """
+    Save user profile data from onboarding (full_name, role).
+    Called from frontend during onboarding flow.
+    
+    Expected body:
+    {
+        "user_id": "uuid",
+        "full_name": "string",
+        "role": "patologi" | "dokter_hewan"
+    }
+    """
+    # Handle OPTIONS request untuk CORS preflight
+    if request.method == "OPTIONS":
+        return jsonify({"message": "OK"}), 200
+    
+    print(f"\n[PROFILE] ===== Request received =====")
+    print(f"[PROFILE] Method: {request.method}")
+    print(f"[PROFILE] URL: {request.url}")
+    print(f"[PROFILE] Headers: {dict(request.headers)}")
+    
+    if not supabase:
+        print("[PROFILE] ERROR: Supabase not configured")
+        return jsonify({"error": "Supabase not configured"}), 500
+    
+    try:
+        print("[PROFILE] Parsing JSON request body...")
+        data = request.get_json()
+        print(f"[PROFILE] Raw data: {data}")
+        
+        user_id = data.get("user_id")
+        full_name = data.get("full_name")
+        role = data.get("role")
+        
+        print(f"[PROFILE] user_id: {user_id}")
+        print(f"[PROFILE] full_name: {full_name}")
+        print(f"[PROFILE] role: {role}")
+        
+        if not user_id or not full_name or not role:
+            error_msg = f"Missing required fields: user_id={user_id}, full_name={full_name}, role={role}"
+            print(f"[PROFILE] ERROR: {error_msg}")
+            return jsonify({"error": error_msg}), 400
+        
+        print(f"[PROFILE] Saving profile for user {user_id}: {full_name} ({role})")
+        
+        # Insert or update profile using Supabase service role
+        profile_data = {
+            "id": user_id,
+            "full_name": full_name.strip(),
+            "role": role,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        print(f"[PROFILE] Upserting data: {profile_data}")
+        
+        result = supabase.table("profiles").upsert(profile_data).execute()
+        
+        print(f"[PROFILE] Supabase upsert response type: {type(result)}")
+        print(f"[PROFILE] Supabase upsert response: {result}")
+        
+        if hasattr(result, "data"):
+            print(f"[PROFILE] Result has data: {result.data}")
+            print(f"[PROFILE] Profile saved successfully for user {user_id}")
+            return jsonify({
+                "success": True,
+                "message": "Profile saved successfully",
+                "data": result.data
+            }), 200
+        else:
+            print(f"[PROFILE] Warning: Result does not have data attribute")
+            print(f"[PROFILE] Result attributes: {dir(result)}")
+            return jsonify({
+                "success": True,
+                "message": "Profile save request processed",
+                "data": None
+            }), 200
+            
+    except Exception as e:
+        print(f"[PROFILE] ERROR: {type(e).__name__} - {e}")
+        print(f"[PROFILE] Traceback:")
+        print(traceback.format_exc())
+        return jsonify({
+            "error": "Failed to save profile",
+            "details": str(e),
+            "error_type": type(e).__name__
+        }), 500
+
+
 # =========================
 # Routes (APIs)
 # =========================
