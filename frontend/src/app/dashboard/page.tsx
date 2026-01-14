@@ -18,6 +18,31 @@ type RecentSummary = {
   title: string;
   description: string;
   time: string; // human readable, e.g., "10 minutes ago"
+  created_at: string;
+};
+
+// Function to format time relative to now (e.g., "10 minutes ago")
+const formatRelativeTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const secondsDiff = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (secondsDiff < 60) return "Baru saja";
+  const minutesDiff = Math.floor(secondsDiff / 60);
+  if (minutesDiff < 60) return `${minutesDiff} menit yang lalu`;
+  const hoursDiff = Math.floor(minutesDiff / 60);
+  if (hoursDiff < 24) return `${hoursDiff} jam yang lalu`;
+  const daysDiff = Math.floor(hoursDiff / 24);
+  if (daysDiff < 7) return `${daysDiff} hari yang lalu`;
+  
+  // Format as date: "14 Jan 2026, 14:33"
+  return date.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 export default function Dashboard() {
   const router = useRouter();
@@ -55,6 +80,7 @@ export default function Dashboard() {
 
   // minimal stats state
   const [stats, setStats] = useState({ totalWords: 0, totalSummaries: 0 });
+  const [recentSummaries, setRecentSummaries] = useState<RecentSummary[]>([]);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const SLIDES = [
     { title: "Transkrip Cepat", text: "Konversi ucapan menjadi teks secara otomatis.", img: "/transcript-slide.png" },
@@ -98,6 +124,46 @@ export default function Dashboard() {
       } catch (e) {
         // ignore; keep zeros
         console.warn("Could not fetch histories for stats", e);
+      }
+
+      // fetch recent summaries (limit to 5)
+      try {
+        const { data: histories } = await supabase
+          .from("histories")
+          .select("id, original_text, summary_result, created_at")
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false })
+          .limit(5);
+
+        if (histories && Array.isArray(histories)) {
+          const summaries: RecentSummary[] = histories
+            .filter((h: any) => h.summary_result) // only show items with summaries
+            .map((h: any) => {
+              // Format date as "Session 14/1/2026, 14:33"
+              const date = new Date(h.created_at);
+              const formattedDate = date.toLocaleDateString('id-ID', {
+                day: 'numeric',
+                month: 'numeric',
+                year: 'numeric'
+              });
+              const formattedTime = date.toLocaleTimeString('id-ID', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+              });
+              const sessionTitle = `Session ${formattedDate}, ${formattedTime}`;
+              return {
+                id: h.id,
+                title: sessionTitle,
+                description: h.summary_result,
+                time: formatRelativeTime(h.created_at),
+                created_at: h.created_at,
+              };
+            });
+          setRecentSummaries(summaries);
+        }
+      } catch (e) {
+        console.warn("Could not fetch recent summaries", e);
       }
 
       setLoading(false);
@@ -337,6 +403,43 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
+
+          {/* Recent Summaries Section */}
+          {recentSummaries.length > 0 && (
+            <div className={s.recentSummariesSection}>
+              <div className={s.sectionHeader}>
+                <h2>
+                  <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12,6 12,12 16,14"></polyline>
+                  </svg>
+                  Ringkasan Terbaru
+                </h2>
+                <a href="/history" className={s.viewAllLink}>Lihat Semua →</a>
+              </div>
+              <div className={s.summariesList}>
+                {recentSummaries.map((summary) => (
+                  <a
+                    key={summary.id}
+                    href={`/detail/${summary.id}`}
+                    className={s.summaryCard}
+                  >
+                    <div className={s.summaryIconWrapper}>
+                      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9,22 9,12 15,12 15,22"></polyline>
+                      </svg>
+                    </div>
+                    <div className={s.summaryContent}>
+                      <h3 className={s.summaryTitle}>{summary.title}</h3>
+                      <p className={s.summaryDescription}>{summary.description}</p>
+                      <p className={s.summaryTime}>{summary.time}</p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Tampilan Voice Panel */}
