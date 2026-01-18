@@ -363,6 +363,11 @@ export default function SettingsPage() {
     return text.toLowerCase().includes(q);
   };
 
+  // Determine which sections to show based on search query
+  const shouldShowSystemStatus = matchesQuery("system status") || matchesQuery("koneksi") || matchesQuery("ai") || matchesQuery("mikrofon");
+  const shouldShowAccount = matchesQuery("account") || matchesQuery("akun") || matchesQuery("hapus");
+  const shouldShowMode = matchesQuery("mode") || matchesQuery("ringkasan") || matchesQuery("summary");
+
   if (loading) {
     return (
       <div className={s.app}>
@@ -471,55 +476,55 @@ export default function SettingsPage() {
           </div>
 
           {/* System Status */}
-          <section className={h.section}>
-            <h3>System Status</h3>
+          {shouldShowSystemStatus && (
+            <section className={h.section}>
+              <h3>System Status</h3>
 
-            <div className={h.item}>
-              <div className={h.info}>
-                <div className={h.label}>Koneksi AI</div>
-                <div className={h.desc}>Status koneksi ke layanan AI</div>
+              <div className={h.item}>
+                <div className={h.info}>
+                  <div className={h.label}>Koneksi AI</div>
+                  <div className={h.desc}>Status koneksi ke layanan AI</div>
+                </div>
+                <div className={h.control}>
+                  <span className={`${h.status} ${aiStatus === "active" ? h.statusActive : h.statusInactive}`}>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
+                    {aiStatus === "active" ? "Terhubung" : "Terputus"}
+                  </span>
+                </div>
               </div>
-              <div className={h.control}>
-                <span className={`${h.status} ${aiStatus === "active" ? h.statusActive : h.statusInactive}`}>
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
-                  {aiStatus === "active" ? "Terhubung" : "Terputus"}
-                </span>
-              </div>
-            </div>
 
-            <div className={h.item}>
-              <div className={h.info}>
-                <div className={h.label}>Mikrofon</div>
-                <div className={h.desc}>Status akses mikrofon</div>
+              <div className={h.item}>
+                <div className={h.info}>
+                  <div className={h.label}>Mikrofon</div>
+                  <div className={h.desc}>Status akses mikrofon</div>
+                </div>
+                <div className={h.control}>
+                  <span className={`${h.status} ${micStatus === "active" ? h.statusActive : h.statusInactive}`}>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
+                    {micStatus === "active" ? "Tersedia" : "Tidak Tersedia"}
+                  </span>
+                </div>
               </div>
-              <div className={h.control}>
-                <span className={`${h.status} ${micStatus === "active" ? h.statusActive : h.statusInactive}`}>
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="10" /></svg>
-                  {micStatus === "active" ? "Tersedia" : "Tidak Tersedia"}
-                </span>
-              </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* Account Settings */}
-          <section className={h.section}>
-            <h3>Akun</h3>
+          {shouldShowAccount && (
+            <section className={h.section}>
+              <h3>Akun</h3>
 
-            <div className={h.item}>
-              <div className={h.info}>
-                <div className={h.label}>Hapus Akun</div>
-                <div className={h.desc}>Hapus akun Anda secara permanen. Tindakan ini tidak dapat dibatalkan.</div>
+              <div className={h.item}>
+                <div className={h.info}>
+                  <div className={h.label}>Hapus Akun</div>
+                  <div className={h.desc}>Hapus akun Anda secara permanen. Tindakan ini tidak dapat dibatalkan.</div>
+                </div>
+                <div className={h.control}>
+                  <button className={h.btnDelete} onClick={handleDeleteAccount}>Hapus Akun</button>
+                </div>
               </div>
-              <div className={h.control}>
-                <button className={h.btnDelete} onClick={handleDeleteAccount}>Hapus Akun</button>
-              </div>
-            </div>
-          </section>
+            </section>
+          )}
 
-          {/* Save Button */}
-          <div className={h.actionsBar}>
-            <button className={h.btnSave} onClick={save}>Simpan Pengaturan</button>
-          </div>
         </div>
       </main>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import s from "@/app/styles/dashboard.module.css";
@@ -82,6 +82,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState({ totalWords: 0, totalSummaries: 0 });
   const [recentSummaries, setRecentSummaries] = useState<RecentSummary[]>([]);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const SLIDES = [
     { title: "Transkrip Cepat", text: "Konversi ucapan menjadi teks secara otomatis.", img: "/transcript-slide.png" },
     { title: "Ringkasan Pintar", text: "Ringkasan singkat dari hasil transkrip.", img: "/summary-slide.png" },
@@ -201,6 +202,18 @@ export default function Dashboard() {
     router.replace("/login");
   };
 
+  // Filter recent summaries based on search query
+  const filteredSummaries = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return recentSummaries;
+    return recentSummaries.filter(
+      (item) =>
+        item.title.toLowerCase().includes(q) ||
+        item.description.toLowerCase().includes(q) ||
+        item.time.toLowerCase().includes(q)
+    );
+  }, [recentSummaries, searchQuery]);
+
   const handleSaveName = async () => {
     if (!editingName.trim()) {
       alert("Nama tidak boleh kosong");
@@ -307,7 +320,13 @@ export default function Dashboard() {
           <div className={s.leftGroup}>
             <div className={s.search} role="search">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
-              <input type="search" placeholder="Search something..." />
+              <input
+                type="search"
+                placeholder="Search recent summaries..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="Search recent summaries"
+              />
             </div>
           </div>
           <div className={s.rightGroup}>
@@ -418,25 +437,31 @@ export default function Dashboard() {
                 <a href="/history" className={s.viewAllLink}>Lihat Semua →</a>
               </div>
               <div className={s.summariesList}>
-                {recentSummaries.map((summary) => (
-                  <a
-                    key={summary.id}
-                    href={`/detail/${summary.id}`}
-                    className={s.summaryCard}
-                  >
-                    <div className={s.summaryIconWrapper}>
-                      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                        <polyline points="9,22 9,12 15,12 15,22"></polyline>
-                      </svg>
-                    </div>
-                    <div className={s.summaryContent}>
-                      <h3 className={s.summaryTitle}>{summary.title}</h3>
-                      <p className={s.summaryDescription}>{summary.description}</p>
-                      <p className={s.summaryTime}>{summary.time}</p>
-                    </div>
-                  </a>
-                ))}
+                {filteredSummaries.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "40px 20px", color: "#999" }}>
+                    {searchQuery ? "Tidak ada ringkasan yang cocok dengan pencarian." : "Belum ada ringkasan terbaru."}
+                  </div>
+                ) : (
+                  filteredSummaries.map((summary) => (
+                    <a
+                      key={summary.id}
+                      href={`/detail/${summary.id}`}
+                      className={s.summaryCard}
+                    >
+                      <div className={s.summaryIconWrapper}>
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                          <polyline points="9,22 9,12 15,12 15,22"></polyline>
+                        </svg>
+                      </div>
+                      <div className={s.summaryContent}>
+                        <h3 className={s.summaryTitle}>{summary.title}</h3>
+                        <p className={s.summaryDescription}>{summary.description}</p>
+                        <p className={s.summaryTime}>{summary.time}</p>
+                      </div>
+                    </a>
+                  ))
+                )}
               </div>
             </div>
           )}

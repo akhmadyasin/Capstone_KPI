@@ -115,7 +115,7 @@ Anda adalah seorang dokter patologi berpengalaman.
 Langsung berikan ringkasan final saja, tanpa proses berpikir.
 Ikuti format:
 
-**Ringkasan Patologi Klinis**
+**Ringkasan Patologi**
 
 **Jenis Pemeriksaan:**
 - ...
